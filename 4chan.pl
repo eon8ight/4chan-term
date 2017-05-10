@@ -21,7 +21,8 @@ my $REST_CLIENT = REST::Client->new();
 my $PIPE_LESS   = '| less -R';
 
 my %sanitize_chars = (
-    '<br>' => "\n",
+    '<br>'  => "\n",
+    '<wbr>' => '',
 );
 
 sub get_table_printer()
@@ -246,50 +247,19 @@ sub list_boards()
     close $less;
 }
 
-sub print_thread_preview($$)
+sub list_threads($;$)
 {
-    my ( $board, $thread_op ) = @_;
-
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/thread/$thread_op.json" );
-
-    my $json   = $REST_CLIENT->responseContent();
-    my $thread = decode_json( $json );
-
-    my $op       = $thread->{posts}->[0];
-    my $title    = defined $op->{sub} ? "$op->{sub} - " : '';
-    my $comment  = $op->{com};
-
-    my $filename      = $op->{tim} . $op->{ext};
-    my $orig_filename = $op->{filename} . $op->{ext};
-    my $dims          = "$op->{tn_w} x $op->{tn_h}";
-
-    my $finfo_cell = "File: $orig_filename ($op->{fsize} B, $dims)";
-
-    my $table = get_table_printer();
-       $table->columns( [ $title . $op->{name}, $op->{now}     ] );
-       $table->add_row( [ $finfo_cell,          "No.$op->{no}" ] );
-
-    print $table->draw();
-
-    print_image( $board, $filename, ( '-W', '32' ) ) if $filename && lc $op->{ext} ne '.webm';
-
-    print sanitize( "\n$comment" ) if $comment;
-    print "\n";
-}
-
-sub list_threads($)
-{
-    my ( $board ) = @_;
+    my ( $board, $req_page ) = @_;
 
     if( !$board )
     {
-        print "Usage: list threads <board>\n";
+        print "Usage: list threads <board> [<page>]\n";
         return;
     }
 
     $board =~ s/\///g;
 
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/threads.json" );
+    $REST_CLIENT->GET( "http://a.4cdn.org/$board/catalog.json" );
     my $json = $REST_CLIENT->responseContent();
 
     unless( $json )
@@ -300,18 +270,47 @@ sub list_threads($)
 
     my $threads = decode_json( $json );
 
+    if( defined $req_page && $req_page > scalar @$threads )
+    {
+        print "Page out of range.\n";
+        return;
+    }
+
     open( my $less, $PIPE_LESS );
     binmode( $less, ':utf8' );
     select $less;
 
     foreach my $page ( @$threads )
     {
+        next if defined $req_page && $page->{page} != $req_page;
+
         print "\n";
         print " /$board/ - Page $page->{page}\n\n";
 
-        foreach my $thread ( @{$page->{threads}} )
+        foreach my $op ( @{$page->{threads}} )
         {
-            print_thread_preview( $board, $thread->{no} );
+            my $title    = defined $op->{sub} ? "$op->{sub} - " : '';
+            my $comment  = $op->{com};
+
+            my $filename      = $op->{tim} . $op->{ext};
+            my $orig_filename = $op->{filename} . $op->{ext};
+            my $dims          = "$op->{tn_w} x $op->{tn_h}";
+
+            my $finfo_cell = "File: $orig_filename ($op->{fsize} B, $dims)";
+
+            my $table = get_table_printer();
+               $table->columns( [ $title . $op->{name}, $op->{now}     ] );
+               $table->add_row( [ $finfo_cell,          "No.$op->{no}" ] );
+
+            print $table->draw();
+
+            if( $filename && lc $op->{ext} ne '.webm' )
+            {
+                print_image( $board, $filename, ( '-W', '32' ) )
+            }
+
+            print sanitize( "\n$comment" ) if $comment;
+            print "\n";
         }
     }
 
