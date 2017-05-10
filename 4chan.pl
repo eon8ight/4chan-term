@@ -56,9 +56,9 @@ sub sanitize($)
             $line =~ s/\<a href=".+" class=".+"\>(.+)\<\/a\>/$1/;
         }
 
-        if( $line =~ m/\<span class="quote"\>/ )
+        if( $line =~ m/\<span class=".+"\>/ )
         {
-            $line    =~ s/\<span class="quote"\>(.+)\<\/span\>/$1/;
+            $line    =~ s/\<span class=".+"\>(.+)\<\/span\>/$1/;
             $retval .=  BRIGHT_GREEN $line;
         }
         else
@@ -256,18 +256,25 @@ sub print_thread_preview($$)
     my $thread = decode_json( $json );
 
     my $op       = $thread->{posts}->[0];
-    my $title    = $op->{sub};
+    my $title    = defined $op->{sub} ? "$op->{sub} - " : '';
     my $comment  = $op->{com};
-    my $filename = defined $op->{tim} ? $op->{tim} . $op->{ext} : undef;
 
-    print "$thread_op";
-    print " - $title" if $title;
-    print "\n";
+    my $filename      = $op->{tim} . $op->{ext};
+    my $orig_filename = $op->{filename} . $op->{ext};
+    my $dims          = "$op->{tn_w} x $op->{tn_h}";
+
+    my $finfo_cell = "File: $orig_filename ($op->{fsize} B, $dims)";
+
+    my $table = get_table_printer();
+       $table->columns( [ $title . $op->{name}, $op->{now}     ] );
+       $table->add_row( [ $finfo_cell,          "No.$op->{no}" ] );
+
+    print $table->draw();
 
     print_image( $board, $filename, ( '-W', '32' ) ) if $filename && lc $op->{ext} ne '.webm';
 
     print sanitize( "\n$comment" ) if $comment;
-    print "\n\n";
+    print "\n";
 }
 
 sub list_threads($)
@@ -279,6 +286,8 @@ sub list_threads($)
         print "Usage: list threads <board>\n";
         return;
     }
+
+    $board =~ s/\///g;
 
     $REST_CLIENT->GET( "http://a.4cdn.org/$board/threads.json" );
     my $json = $REST_CLIENT->responseContent();
@@ -297,7 +306,8 @@ sub list_threads($)
 
     foreach my $page ( @$threads )
     {
-        print "Page $page->{page}\n";
+        print "\n";
+        print " /$board/ - Page $page->{page}\n\n";
 
         foreach my $thread ( @{$page->{threads}} )
         {
