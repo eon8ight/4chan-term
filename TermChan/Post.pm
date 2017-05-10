@@ -59,7 +59,7 @@ sub _get_post_str($$;$)
     }
     else
     {
-        $retval .= "(.webm ommitted)\n";
+        $retval .= "\n(.webm ommitted)\n";
     }
 
     $retval .= sanitize( "\n$comment" ) if $comment;

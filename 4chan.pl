@@ -6,10 +6,9 @@ use warnings;
 use utf8;
 
 use File::Fetch;
-use JSON;
-use REST::Client;
 use Term::ProgressBar;
 
+use TermChan::API;
 use TermChan::IO;
 use TermChan::Post;
 
@@ -17,23 +16,21 @@ $Term::ANSIColor::AUTOLOCAL = 1;
 
 binmode( STDOUT, ':utf8' );
 
-my $REST_CLIENT = REST::Client->new();
-
-sub get_thread_obj($$)
+sub get_timer($$)
 {
-    my ( $board, $thread_op ) = @_;
-    
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/thread/$thread_op.json" );
-    my $json = $REST_CLIENT->responseContent();
+    my ( $label, $max ) = @_;
 
-    unless( $json )
-    {
-        print "Thread does not exist.\n";
-        return;
-    }
+    my $timer = Term::ProgressBar->new( {
+        name   => $label,
+        count  => $max,
+        remove => 1,
+        ETA    => 'linear',
+    } );
 
-    my $thread = decode_json( $json );
-    return $thread;
+    $timer->minor( 0 );
+    $timer->max_update_rate( 1 );
+
+    return $timer;
 }
 
 sub pull_images($$;@)
@@ -60,17 +57,9 @@ sub pull_images($$;@)
         $thread_name .= '...';
     }
 
-    my $progress = Term::ProgressBar->new( {
-        name   => $thread_name,
-        count  => scalar @{$thread->{posts}},
-        remove => 1,
-        ETA    => 'linear',
-    } );
-
-    $progress->minor( 0 );
-    $progress->max_update_rate( 1 );
-
-    my $counter = 0;
+    my $timer_max = scalar @{$thread->{posts}};
+    my $progress  = get_timer( $thread_name, $timer_max );
+    my $counter   = 0;
 
     foreach my $post ( @{$thread->{posts}} )
     {
@@ -89,11 +78,10 @@ sub pull_images($$;@)
 
         rename( $uri, $rename_uri );
 
-        $counter++;
-        $progress->update( $counter );
+        $progress->update( $counter++ );
     }
 
-    $progress->update( scalar @{$thread->{posts}} );
+    $progress->update( $timer_max );
     print "No new images to pull.\n" if $counter == 0;
 }
 
@@ -121,18 +109,23 @@ sub view_thread($$)
        $thread_str .= " $thread_title\n";
        $thread_str .= " Created: $op->{now}\n";
        $thread_str .= " $reply_count Posts\n\n";
-       $thread_str .= get_post_str( $board, $_ ) for @{$thread->{posts}};
 
+    my $progress = get_timer( "Loading posts from /$board/$op->{no}", $reply_count );
+    my $counter  = 0;
+
+    foreach my $post_obj ( @{$thread->{posts}} )
+    {
+        $thread_str .= get_post_str( $board, $post_obj );
+        $progress->update( $counter++ );
+    }
+
+    $progress->update( $reply_count );
     print_less( $thread_str );
 }
 
 sub list_boards()
 {
-    $REST_CLIENT->GET( "http://a.4cdn.org/boards.json" );
-
-    my $json   = $REST_CLIENT->responseContent();
-    my $boards = decode_json( $json );
-
+    my $boards         = get_boards_obj();
     my $board_list_str = '';
 
     foreach my $board ( @{$boards->{boards}} )
@@ -156,18 +149,8 @@ sub list_threads($;$)
         return;
     }
 
-    $board =~ s/\///g;
-
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/catalog.json" );
-    my $json = $REST_CLIENT->responseContent();
-
-    unless( $json )
-    {
-        print "Board does not exist.\n";
-        return;
-    }
-
-    my $threads = decode_json( $json );
+    $board      =~ s/\///g;
+    my $threads =  get_catalog_obj( $board );
 
     if( defined $req_page && $req_page > scalar @$threads )
     {
@@ -177,6 +160,12 @@ sub list_threads($;$)
 
     my $thread_list_str = '';
 
+    my $num_threads  = scalar @{$threads->[0]->{threads}};
+       $num_threads *= scalar @$threads if !defined $req_page;
+
+    my $progress = get_timer( "Loading threads on /$board/", $num_threads );
+    my $counter  = 0;
+
     foreach my $page ( @$threads )
     {
         next if defined $req_page && $page->{page} != $req_page;
@@ -184,9 +173,14 @@ sub list_threads($;$)
         $thread_list_str .= "\n";
         $thread_list_str .= " /$board/ - Page $page->{page}\n\n";
 
-        $thread_list_str .= get_op_post_str( $board, $_ ) for @{$page->{threads}};
+        foreach my $post_obj ( @{$page->{threads}} )
+        {
+            $thread_list_str .= get_op_post_str( $board, $post_obj );
+            $progress->update( $counter++ );
+        }
     }
 
+    $progress->update( $num_threads );
     print_less( $thread_list_str );
 }
 
@@ -200,18 +194,8 @@ sub search_catalog($@)
         return;
     }
 
-    $board =~ s/\///g;
-
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/catalog.json" );
-    my $json = $REST_CLIENT->responseContent();
-
-    unless( $json )
-    {
-        print "Board does not exist.\n";
-        return;
-    }
-
-    my $threads = decode_json( $json );
+    $board      =~ s/\///g;
+    my $threads = get_catalog_obj( $board );
 
     my $catalog_str = '';
 
