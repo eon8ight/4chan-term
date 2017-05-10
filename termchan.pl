@@ -9,12 +9,22 @@ use File::Fetch;
 use Term::ProgressBar;
 
 use TermChan::API;
-use TermChan::IO;
 use TermChan::Post;
 
-$Term::ANSIColor::AUTOLOCAL = 1;
+sub print_less($)
+{
+    my ( $text ) = @_;
 
-binmode( STDOUT, ':utf8' );
+    open( my $less, '| less -R' );
+    binmode( $less, ':utf8' );
+    select $less;
+
+    print $text;
+
+    select STDOUT;
+    close $less;
+}
+
 
 sub get_timer($$)
 {
@@ -246,6 +256,8 @@ my $COMMANDS = {
 };
 
 # Program main
+
+binmode( STDOUT, ':utf8' );
 
 print "Imageboard for your terminal\n";
 print "by \"Once Again I've Concocted Something Useless\" Labs\n\n";

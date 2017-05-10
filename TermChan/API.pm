@@ -4,55 +4,56 @@ use strict;
 use warnings;
 
 use JSON;
+use Readonly;
 use REST::Client;
 
 use base 'Exporter';
 our @EXPORT = qw( get_thread_obj get_catalog_obj get_boards_obj );
 
-my $REST_CLIENT = REST::Client->new();
+Readonly my $_REST_CLIENT => REST::Client->new();
+
+sub _get($$)
+{
+    my ( $url, $errstr ) = @_;
+
+    $_REST_CLIENT->GET( $url );
+    my $json = $_REST_CLIENT->responseContent();
+
+    unless( $json )
+    {
+        print "$errstr\n";
+        return;
+    }
+
+    return decode_json( $json );
+}
 
 sub get_thread_obj($$)
 {
     my ( $board, $thread_op ) = @_;
-    
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/thread/$thread_op.json" );
-    my $json = $REST_CLIENT->responseContent();
 
-    unless( $json )
-    {
-        print "Thread does not exist.\n";
-        return;
-    }
-
-    my $thread = decode_json( $json );
-    return $thread;
+    return _get(
+        "http://a.4cdn.org/$board/thread/$thread_op.json",
+        'Thread does not exist.'
+    );
 }
 
 sub get_catalog_obj($)
 {
     my ( $board ) = @_;
 
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/catalog.json" );
-    my $json = $REST_CLIENT->responseContent();
-
-    unless( $json )
-    {
-        print "Board does not exist.\n";
-        return;
-    }
-
-    my $threads = decode_json( $json );
-    return $threads;
+    return _get(
+        "http://a.4cdn.org/$board/catalog.json",
+        'Board does not exist.'
+    );
 }
 
 sub get_boards_obj()
 {
-    $REST_CLIENT->GET( "http://a.4cdn.org/boards.json" );
-
-    my $json   = $REST_CLIENT->responseContent();
-    my $boards = decode_json( $json );
-
-    return $boards;
+    return _get(
+        'http://a.4cdn.org/boards.json',
+        'No boards to show - is your internet connection down?.'
+    );
 }
 
 1;
