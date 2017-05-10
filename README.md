@@ -4,13 +4,15 @@ This Perl script allows you to view 4chan threads in your terminal.
 
 It is far from perfect.
 
-Current dependencies are:
+Current CPAN dependencies are:
 * File::Fetch
 * HTML::Entities
 * JSON
 * REST::Client
 * Term::ANSIColor
 * Term::ProgressBar
+
+Additionally, `caca-utils` is required for `img2txt`.
 
 Current commands are:
 * `list boards` - List all boards.
