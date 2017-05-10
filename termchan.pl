@@ -25,7 +25,6 @@ sub print_less($)
     close $less;
 }
 
-
 sub get_timer($$)
 {
     my ( $label, $max ) = @_;
