@@ -199,6 +199,10 @@ sub search_catalog($@)
 
     my $catalog_str = '';
 
+    my $num_threads = scalar( @{$threads->[0]->{threads}} ) * scalar( @$threads );
+    my $progress    = get_timer( "Searching threads on /$board/", $num_threads );
+    my $counter     = 0;
+
     foreach my $page ( @$threads )
     {
         foreach my $op ( @{$page->{threads}} )
@@ -216,9 +220,12 @@ sub search_catalog($@)
                     last;
                 }
             }
+
+            $progress->update( $counter++ );
         }
     }
 
+    $progress->update( $num_threads );
     print_less( $catalog_str );
 }
 
