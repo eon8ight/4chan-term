@@ -6,72 +6,18 @@ use warnings;
 use utf8;
 
 use File::Fetch;
-use HTML::Entities;
 use JSON;
 use REST::Client;
-use Term::ANSIColor qw( :constants :pushpop );
 use Term::ProgressBar;
-use Text::ANSITable;
+
+use TermChan::IO;
+use TermChan::Post;
 
 $Term::ANSIColor::AUTOLOCAL = 1;
 
 binmode( STDOUT, ':utf8' );
 
 my $REST_CLIENT = REST::Client->new();
-my $PIPE_LESS   = '| less -R';
-
-my %sanitize_chars = (
-    '<br>'  => "\n",
-    '<wbr>' => '',
-);
-
-sub get_table_printer()
-{
-    my $table = Text::ANSITable->new();
-       $table->use_utf8( 1 );
-       $table->border_style( 'Default::bold' );
-       $table->color_theme( 'Default::no_color' );
-
-    return $table;
-}
-
-sub sanitize($)
-{
-    my ( $str ) = @_;
-
-    my $sanitized = $str;
-       $sanitized = decode_entities( $sanitized );
-
-    foreach my $orig ( keys %sanitize_chars )
-    {
-        my $repl   =  $sanitize_chars{$orig};
-        $sanitized =~ s/$orig/$repl/g;
-    }
-
-    my $retval = '';
-
-    foreach my $line ( split( /\n/, $sanitized ) )
-    {
-        if( $line =~ m/\<a href=".+" class=".+"\>/ )
-        {
-            $line =~ s/\<a href=".+" class=".+"\>(.+)\<\/a\>/$1/;
-        }
-
-        if( $line =~ m/\<span class=".+"\>/ )
-        {
-            $line    =~ s/\<span class=".+"\>(.+)\<\/span\>/$1/;
-            $retval .=  BRIGHT_GREEN $line;
-        }
-        else
-        {
-            $retval .= $line;
-        }
-
-        $retval .= "\n";
-    }
-
-    return $retval;
-}
 
 sub get_thread_obj($$)
 {
@@ -90,7 +36,7 @@ sub get_thread_obj($$)
     return $thread;
 }
 
-sub thread_image_dl($$;@)
+sub pull_images($$;@)
 {
     my ( $board, $thread_op, @save_location ) = @_;
     
@@ -151,44 +97,6 @@ sub thread_image_dl($$;@)
     print "No new images to pull.\n" if $counter == 0;
 }
 
-sub print_image($$;@)
-{
-    my ( $board, $filename, @opts ) = @_;
-
-    my $opts_str = @opts ? join( ' ', @opts ) : '';
-
-    my $ff         = File::Fetch->new( uri => "http://i.4cdn.org/$board/$filename" );
-    my $uri        = $ff->fetch( to => '/tmp' );
-    my $image_ansi = `img2txt $opts_str -f ansi $uri`;
-
-    print "\n";
-    print $image_ansi;
-}
-
-sub print_post($$)
-{
-    my ( $board, $post ) = @_;
-
-    my $comment       = $post->{com};
-    my $filename      = defined $post->{tim} ? $post->{tim} . $post->{ext} : undef;
-    my $orig_filename = $filename ? $post->{filename} . $post->{ext}       : undef;
-    my $dims          = $filename ? "$post->{tn_w} x $post->{tn_h}"        : undef;
-
-    my $finfo_cell = $orig_filename
-                   ? "File: $orig_filename ($post->{fsize} B, $dims)"
-                   : 'No image';
-
-    my $table = get_table_printer();
-       $table->columns( [ "$post->{name}", $post->{now} ] );
-       $table->add_row( [ "No.$post->{no}", $finfo_cell ] );
-
-    print $table->draw();
-
-    print_image( $board, $filename ) if $filename && lc $post->{ext} ne '.webm';
-    print sanitize( "\n$comment" ) if $comment;
-    print "\n";
-}
-
 sub view_thread($$)
 {
     my ( $board, $thread_op ) = @_;
@@ -209,19 +117,13 @@ sub view_thread($$)
 
     my $reply_count = scalar @{$thread->{posts}};
     
-    open( my $less, $PIPE_LESS );
-    binmode( $less, ':utf8' );
-    select $less;
+    my $thread_str  = "\n";
+       $thread_str .= " $thread_title\n";
+       $thread_str .= " Created: $op->{now}\n";
+       $thread_str .= " $reply_count Posts\n\n";
+       $thread_str .= get_post_str( $board, $_ ) for @{$thread->{posts}};
 
-    print "\n";
-    print " $thread_title\n";
-    print " Created: $op->{now}\n";
-    print " $reply_count Posts\n\n";
-
-    print_post( $board, $_ ) for ( @{$thread->{posts}} );
-
-    select STDOUT;
-    close $less;
+    print_less( $thread_str );
 }
 
 sub list_boards()
@@ -231,20 +133,17 @@ sub list_boards()
     my $json   = $REST_CLIENT->responseContent();
     my $boards = decode_json( $json );
 
-    open( my $less, $PIPE_LESS );
-    binmode( $less, ':utf8' );
-    select $less;
+    my $board_list_str = '';
 
     foreach my $board ( @{$boards->{boards}} )
     {
         my $board_abbr = $board->{board};
         my $board_name = $board->{title};
 
-        print "/$board_abbr/ - $board_name\n";
+        $board_list_str .= "/$board_abbr/ - $board_name\n";
     }
 
-    select STDOUT;
-    close $less;
+    print_less( $board_list_str );
 }
 
 sub list_threads($;$)
@@ -276,51 +175,72 @@ sub list_threads($;$)
         return;
     }
 
-    open( my $less, $PIPE_LESS );
-    binmode( $less, ':utf8' );
-    select $less;
+    my $thread_list_str = '';
 
     foreach my $page ( @$threads )
     {
         next if defined $req_page && $page->{page} != $req_page;
 
-        print "\n";
-        print " /$board/ - Page $page->{page}\n\n";
+        $thread_list_str .= "\n";
+        $thread_list_str .= " /$board/ - Page $page->{page}\n\n";
 
+        $thread_list_str .= get_op_post_str( $board, $_ ) for @{$page->{threads}};
+    }
+
+    print_less( $thread_list_str );
+}
+
+sub search_catalog($@)
+{
+    my ( $board, @keywords ) = @_;
+
+    if( !$board || !@keywords )
+    {
+        print( "Usage: search catalog <board> <keyword>[, <keyword>, ...]\n" );
+        return;
+    }
+
+    $board =~ s/\///g;
+
+    $REST_CLIENT->GET( "http://a.4cdn.org/$board/catalog.json" );
+    my $json = $REST_CLIENT->responseContent();
+
+    unless( $json )
+    {
+        print "Board does not exist.\n";
+        return;
+    }
+
+    my $threads = decode_json( $json );
+
+    my $catalog_str = '';
+
+    foreach my $page ( @$threads )
+    {
         foreach my $op ( @{$page->{threads}} )
         {
-            my $title    = defined $op->{sub} ? "$op->{sub} - " : '';
-            my $comment  = $op->{com};
+            my $com = defined $op->{com} ? lc $op->{com} : '';
+            my $sub = defined $op->{sub} ? lc $op->{sub} : '';
 
-            my $filename      = $op->{tim} . $op->{ext};
-            my $orig_filename = $op->{filename} . $op->{ext};
-            my $dims          = "$op->{tn_w} x $op->{tn_h}";
-
-            my $finfo_cell = "File: $orig_filename ($op->{fsize} B, $dims)";
-
-            my $table = get_table_printer();
-               $table->columns( [ $title . $op->{name}, $op->{now}     ] );
-               $table->add_row( [ $finfo_cell,          "No.$op->{no}" ] );
-
-            print $table->draw();
-
-            if( $filename && lc $op->{ext} ne '.webm' )
+            foreach my $keyword ( @keywords )
             {
-                print_image( $board, $filename, ( '-W', '32' ) )
-            }
+                $keyword = lc $keyword;
 
-            print sanitize( "\n$comment" ) if $comment;
-            print "\n";
+                if( $com =~ m/$keyword/ || $sub =~ m/$keyword/ )
+                {
+                    $catalog_str .= get_op_post_str( $board, $op );
+                    last;
+                }
+            }
         }
     }
 
-    select STDOUT;
-    close $less;
+    print_less( $catalog_str );
 }
 
-my $commands = {
+my $COMMANDS = {
     'pull' => {
-        'images' => \&thread_image_dl,
+        'images' => \&pull_images,
     },
     'view' => {
         'thread' => \&view_thread,
@@ -328,6 +248,9 @@ my $commands = {
     'list' => {
         'boards'  => \&list_boards,
         'threads' => \&list_threads,
+    },
+    'search' => {
+        'catalog' => \&search_catalog,
     },
 };
 
@@ -350,7 +273,7 @@ while( 1 )
     last if $cmd eq 'exit';
 
     my $subcmd = shift @tokens;
-    my $opts   = $commands->{$cmd};
+    my $opts   = $COMMANDS->{$cmd};
     
     if( $opts )
     {
@@ -363,13 +286,13 @@ while( 1 )
         else
         {
             print "Valid $cmd commands are:\n";
-            print "  $_\n" for ( keys %$opts );
+            print "  $_\n" for keys %$opts;
         }
     }
     else
     {
         print "Valid commands are: \n";
-        print "  $_\n" for ( keys %$commands );
+        print "  $_\n" for keys %$COMMANDS;
         print "  exit\n";
     }
 }
