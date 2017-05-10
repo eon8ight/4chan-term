@@ -11,6 +11,7 @@ use JSON;
 use REST::Client;
 use Term::ANSIColor qw( :constants :pushpop );
 use Term::ProgressBar;
+use Text::ANSITable;
 
 $Term::ANSIColor::AUTOLOCAL = 1;
 
@@ -22,6 +23,16 @@ my $PIPE_LESS   = '| less -R';
 my %sanitize_chars = (
     '<br>' => "\n",
 );
+
+sub get_table_printer()
+{
+    my $table = Text::ANSITable->new();
+       $table->use_utf8( 1 );
+       $table->border_style( 'Default::bold' );
+       $table->color_theme( 'Default::no_color' );
+
+    return $table;
+}
 
 sub sanitize($)
 {
@@ -61,6 +72,23 @@ sub sanitize($)
     return $retval;
 }
 
+sub get_thread_obj($$)
+{
+    my ( $board, $thread_op ) = @_;
+    
+    $REST_CLIENT->GET( "http://a.4cdn.org/$board/thread/$thread_op.json" );
+    my $json = $REST_CLIENT->responseContent();
+
+    unless( $json )
+    {
+        print "Thread does not exist.\n";
+        return;
+    }
+
+    my $thread = decode_json( $json );
+    return $thread;
+}
+
 sub thread_image_dl($$;@)
 {
     my ( $board, $thread_op, @save_location ) = @_;
@@ -76,16 +104,7 @@ sub thread_image_dl($$;@)
     my $save_location = "$thread_op";
        $save_location = glob join( ' ', @save_location ) if @save_location;
     
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/thread/$thread_op.json" );
-    my $json = $REST_CLIENT->responseContent();
-
-    unless( $json )
-    {
-        print "Thread does not exist.\n";
-        return;
-    }
-
-    my $thread      = decode_json( $json );
+    my $thread = get_thread_obj( $board, $thread_op );
     my $thread_name = $thread->{posts}->[0]->{sub};
 
     if( length( $thread_name ) > 24 )
@@ -149,10 +168,21 @@ sub print_post($$)
 {
     my ( $board, $post ) = @_;
 
-    my $comment  = $post->{com};
-    my $filename = defined $post->{tim} ? $post->{tim} . $post->{ext} : undef;
+    my $comment       = $post->{com};
+    my $filename      = defined $post->{tim} ? $post->{tim} . $post->{ext} : undef;
+    my $orig_filename = $filename ? $post->{filename} . $post->{ext}       : undef;
+    my $dims          = $filename ? "$post->{tn_w} x $post->{tn_h}"        : undef;
 
-    print "======== $post->{no} ========\n";
+    my $finfo_cell = $orig_filename
+                   ? "File: $orig_filename ($post->{fsize} B, $dims)"
+                   : 'No image';
+
+    my $table = get_table_printer();
+       $table->columns( [ "$post->{name}", $post->{now} ] );
+       $table->add_row( [ "No.$post->{no}", $finfo_cell ] );
+
+    print $table->draw();
+
     print_image( $board, $filename ) if $filename && lc $post->{ext} ne '.webm';
     print sanitize( "\n$comment" ) if $comment;
     print "\n";
@@ -170,26 +200,23 @@ sub view_thread($$)
 
     $board =~ s/\///g;
 
-    $REST_CLIENT->GET( "http://a.4cdn.org/$board/thread/$thread_op.json" );
-    my $json = $REST_CLIENT->responseContent();
-
-    unless( $json )
-    {
-        print "Thread does not exist.\n";
-        return;
-    }
-
-    my $thread = decode_json( $json );
+    my $thread = get_thread_obj( $board, $thread_op );
     my $op     = $thread->{posts}->[0];
 
-    my $thread_title  = "$board | Thread $op->{no}";
+    my $thread_title  = "/$board/ - Thread $op->{no}";
        $thread_title .= " - $op->{sub}" if $op->{sub};
+
+    my $reply_count = scalar @{$thread->{posts}};
     
     open( my $less, $PIPE_LESS );
     binmode( $less, ':utf8' );
     select $less;
 
-    print "$thread_title\n\n";
+    print "\n";
+    print " $thread_title\n";
+    print " Created: $op->{now}\n";
+    print " $reply_count Posts\n\n";
+
     print_post( $board, $_ ) for ( @{$thread->{posts}} );
 
     select STDOUT;

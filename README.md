@@ -11,6 +11,7 @@ Current CPAN dependencies are:
 * REST::Client
 * Term::ANSIColor
 * Term::ProgressBar
+* Text::ANSITable
 
 Additionally, `caca-utils` is required for `img2txt`.
 
