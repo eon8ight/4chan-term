@@ -8,6 +8,7 @@ Current CPAN dependencies are:
 * File::Fetch
 * HTML::Entities
 * JSON
+* Readonly
 * REST::Client
 * Term::ANSIColor
 * Term::ProgressBar
