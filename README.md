@@ -4,6 +4,8 @@ This Perl script allows you to view 4chan threads in your terminal.
 
 ![Browsing /a/](http://i.imgur.com/9zJ67vo.png)
 
+Running `install.sh` as superuser will install the required dependencies.
+
 Current CPAN dependencies are:
 * File::Fetch
 * HTML::Entities
