@@ -10,7 +10,8 @@ use Term::ANSIColor qw( :constants :pushpop );
 use Text::ANSITable;
 
 use base 'Exporter';
-our @EXPORT = qw( get_image_str get_post_str get_op_post_str );
+our @EXPORT = qw( $TMP_DIR get_image_str get_post_str get_op_post_str );
+our ( $TMP_DIR );
 
 BEGIN
 {
@@ -21,6 +22,8 @@ Readonly my %_SANITIZE_CHARS => (
     '<br>'  => "\n",
     '<wbr>' => '',
 );
+
+Readonly $TMP_DIR => '/tmp/term-chan';
 
 sub _sanitize($)
 {
@@ -76,9 +79,12 @@ sub get_image_str($$;@)
     my ( $board, $filename, @opts ) = @_;
 
     my $opts_str = @opts ? join( ' ', @opts ) : '';
+    my $tmp_dir_board = "$TMP_DIR/$board";
+
+    File::Util->new()->make_dir( $tmp_dir_board ) unless -e $tmp_dir_board;
 
     my $ff         = File::Fetch->new( uri => "http://i.4cdn.org/$board/$filename" );
-    my $uri        = $ff->fetch( to => '/tmp' );
+    my $uri        = $ff->fetch( to => $tmp_dir_board );
     my $image_ansi = `img2txt $opts_str -f ansi $uri`;
 
     my $retval  = "\n";

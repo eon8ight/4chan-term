@@ -5,9 +5,12 @@ use warnings;
 
 use utf8;
 
+use Data::UUID;
 use File::Fetch;
+use File::Util;
 use Getopt::Long;
 use Term::ProgressBar;
+use Term::ReadLine;
 
 use TermChan::API;
 use TermChan::Post;
@@ -21,14 +24,18 @@ sub print_less($)
 {
     my ( $text ) = @_;
 
-    open( my $less, '| less -R' );
-    binmode( $less, ':utf8' );
-    select $less;
+    File::Util->new()->make_dir( $TMP_DIR ) unless -e $TMP_DIR;
 
-    print $text;
+    my $uuid = Data::UUID->new()->create_str();
+    my $text_tmp = "$TMP_DIR/$uuid.txt";
 
-    select STDOUT;
-    close $less;
+    open( my $text_fh, '>', $text_tmp );
+    print {$text_fh} $text;
+    close( $text_fh );
+
+    system( 'less', '-R', $text_tmp );
+
+    unlink $text_tmp;
 }
 
 sub get_timer($$)
@@ -275,11 +282,11 @@ print "\n";
 print "by \"Once Again I've Concocted Something Useless\" Labs\n\n";
 print "Enter 'help' for a list of commands.\n";
 
-while( 1 )
-{
-    print '> ';
+my $terminal = Term::ReadLine->new( 'TermChan' );
+   $terminal->ornaments( 0 );
 
-    my $input  = <STDIN>;
+while( defined( my $input = $terminal->readline( '> ' ) ) )
+{
     my @tokens = split( /\s+/, $input );
 
     my $cmd = shift @tokens;
