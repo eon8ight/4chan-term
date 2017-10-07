@@ -6,10 +6,16 @@ use warnings;
 use utf8;
 
 use File::Fetch;
+use Getopt::Long;
 use Term::ProgressBar;
 
 use TermChan::API;
 use TermChan::Post;
+
+# Get opts first
+my $no_images = 0;
+
+GetOptions('no-images' => \$no_images);
 
 sub print_less($)
 {
@@ -45,20 +51,25 @@ sub get_timer($$)
 sub pull_images($$;@)
 {
     my ( $board, $thread_op, @save_location ) = @_;
-    
+
     if( !$board || !$thread_op )
     {
         print "Usage: get images <board> <thread OP> [<save location>]\n";
         return;
     }
-    
+
     $board =~ s/\///g;
 
-    my $save_location = "$thread_op";
-       $save_location = glob join( ' ', @save_location ) if @save_location;
-    
-    my $thread = get_thread_obj( $board, $thread_op );
-    my $thread_name = $thread->{posts}->[0]->{sub};
+    my $thread      = get_thread_obj( $board, $thread_op );
+    my $thread_name = defined $thread->{posts}->[0]->{sub}
+                    ? $thread->{posts}->[0]->{sub}
+                    : "$thread_op";
+
+    my $save_location = @save_location
+                      ? glob join( ' ', @save_location )
+                      : '.';
+
+    $save_location .= "/$thread_name";
 
     if( length( $thread_name ) > 24 )
     {
@@ -97,7 +108,7 @@ sub pull_images($$;@)
 sub view_thread($$)
 {
     my ( $board, $thread_op ) = @_;
-    
+
     if( !$board || !$thread_op )
     {
         print "Usage: view post <board> <post number>\n";
@@ -113,7 +124,7 @@ sub view_thread($$)
        $thread_title .= " - $op->{sub}" if $op->{sub};
 
     my $reply_count = scalar @{$thread->{posts}};
-    
+
     my $thread_str  = "\n";
        $thread_str .= " $thread_title\n";
        $thread_str .= " Created: $op->{now}\n";
@@ -124,7 +135,7 @@ sub view_thread($$)
 
     foreach my $post_obj ( @{$thread->{posts}} )
     {
-        $thread_str .= get_post_str( $board, $post_obj );
+        $thread_str .= get_post_str( $board, $post_obj, $no_images );
         $progress->update( $counter++ );
     }
 
@@ -184,7 +195,7 @@ sub list_threads($;$)
 
         foreach my $post_obj ( @{$page->{threads}} )
         {
-            $thread_list_str .= get_op_post_str( $board, $post_obj );
+            $thread_list_str .= get_op_post_str( $board, $post_obj, $no_images );
             $progress->update( $counter++ );
         }
     }
@@ -225,7 +236,7 @@ sub search_catalog($@)
 
                 if( $com =~ m/$keyword/ || $sub =~ m/$keyword/ )
                 {
-                    $catalog_str .= get_op_post_str( $board, $op );
+                    $catalog_str .= get_op_post_str( $board, $op, $no_images );
                     last;
                 }
             }
@@ -258,7 +269,9 @@ my $COMMANDS = {
 
 binmode( STDOUT, ':utf8' );
 
-print "Imageboard for your terminal\n";
+print "Imageboard for your terminal";
+print ' (minus images)' if $no_images;
+print "\n";
 print "by \"Once Again I've Concocted Something Useless\" Labs\n\n";
 print "Enter 'help' for a list of commands.\n";
 
@@ -268,7 +281,7 @@ while( 1 )
 
     my $input  = <STDIN>;
     my @tokens = split( /\s+/, $input );
-    
+
     my $cmd = shift @tokens;
 
     next unless $cmd;
@@ -276,11 +289,11 @@ while( 1 )
 
     my $subcmd = shift @tokens;
     my $opts   = $COMMANDS->{$cmd};
-    
+
     if( $opts )
     {
         my $func = defined $subcmd ? $opts->{$subcmd} : undef;
-        
+
         if( $func )
         {
             &$func( @tokens );
