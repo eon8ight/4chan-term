@@ -1,8 +1,12 @@
+Data::UUID
 File::Fetch
+File::Util
+Getopt::Long
 HTML::Entities
 JSON
 Readonly
 REST::Client
 Term::ANSIColor
 Term::ProgressBar
+Term::ReadLine
 Text::ANSITable

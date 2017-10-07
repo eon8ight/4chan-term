@@ -276,6 +276,11 @@ my $COMMANDS = {
 
 binmode( STDOUT, ':utf8' );
 
+if( !$no_images )
+{
+    die "img2txt command not found - please install caca-utils.\n" unless `which img2txt`;
+}
+
 print "Imageboard for your terminal";
 print ' (minus images)' if $no_images;
 print "\n";
