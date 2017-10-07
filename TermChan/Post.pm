@@ -87,10 +87,10 @@ sub get_image_str($$;@)
     return $retval;
 }
 
-sub _get_post_str($$;$)
+sub _get_post_str($$;$$)
 {
-    my ( $board, $post, $is_op ) = @_;
-    
+    my ( $board, $post, $is_op, $no_images ) = @_;
+
     my $comment       = $post->{com};
     my $filename      = defined $post->{tim} ? $post->{tim} . $post->{ext}      : undef;
     my $orig_filename = $filename            ? $post->{filename} . $post->{ext} : undef;
@@ -114,13 +114,15 @@ sub _get_post_str($$;$)
 
     my $retval = $table->draw();
 
-    if( $filename && lc $post->{ext} ne '.webm' )
+    if( $no_images )
     {
-        $retval .= get_image_str( $board, $filename, ( '-W', '32' ) )
+        $retval .= "\n(image file ommitted)\n";
     }
-    else
+    elsif( $filename )
     {
-        $retval .= "\n(.webm ommitted)\n";
+        $retval .= lc $post->{ext} ne '.webm'
+                 ? get_image_str( $board, $filename, ( '-W', '32' ) )
+                 : "\n(.webm ommitted)\n";
     }
 
     $retval .= _sanitize( "\n$comment" ) if $comment;
@@ -129,16 +131,16 @@ sub _get_post_str($$;$)
     return $retval;
 }
 
-sub get_post_str($$)
+sub get_post_str($$;$)
 {
-    my ( $board, $post_obj ) = @_;
-    return _get_post_str( $board, $post_obj );
+    my ( $board, $post_obj, $no_images ) = @_;
+    return _get_post_str( $board, $post_obj, $no_images );
 }
 
-sub get_op_post_str($$)
+sub get_op_post_str($$;$)
 {
-    my ( $board, $op_post_obj ) = @_;
-    return _get_post_str( $board, $op_post_obj, 1 );
+    my ( $board, $op_post_obj, $no_images ) = @_;
+    return _get_post_str( $board, $op_post_obj, 1, $no_images );
 }
 
 1;
